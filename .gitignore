@@ -1,0 +1,4 @@
+build/
+tinyuml-0.13_02-bin/
+target/
+*.class
