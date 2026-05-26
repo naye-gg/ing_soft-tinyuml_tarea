@@ -52,9 +52,6 @@ import org.tinyuml.draw.LabelChangeListener;
 import org.tinyuml.model.UmlModel;
 import org.tinyuml.util.AppCommandListener;
 import org.tinyuml.umldraw.structure.StructureDiagram;
-import org.tinyuml.umldraw.structure.PackageElement;
-import org.tinyuml.umldraw.structure.ClassElement;
-import org.tinyuml.umldraw.structure.ComponentElement;
 import org.tinyuml.model.UmlModelImpl;
 import org.tinyuml.ui.commands.ModelReader;
 import org.tinyuml.ui.commands.ModelWriter;
@@ -82,8 +79,10 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
 
   private JTabbedPane tabbedPane;
   private JLabel coordLabel = new JLabel("    ");
-  private JLabel countLabel = new JLabel("Total Items : 00");
+  private JLabel countLabel = new JLabel("    ");
   private JLabel memLabel = new JLabel("    ");
+  // RF-001: actualiza countLabel suscribiendose al editor (Observer).
+  private transient ElementCountStatusUpdater elementCountUpdater;
   private UmlModel umlModel;
   private DiagramEditor currentEditor;
   private transient Timer timer = new Timer();
@@ -135,6 +134,9 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
     installMainToolbar();
     installMenubar();
     installStatusbar();
+    elementCountUpdater = new ElementCountStatusUpdater(
+      countLabel, new DiagramElementCounter());
+    elementCountUpdater.refresh(null);
 
     addWindowListener(new WindowAdapter() {
       /**
@@ -197,9 +199,11 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
   private void createEditor(StructureDiagram diagram) {
     currentEditor = new DiagramEditor(this, diagram);
     currentEditor.addEditorStateListener(this);
+    currentEditor.addEditorStateListener(elementCountUpdater);
     currentEditor.addSelectionListener(this);
     currentEditor.addAppCommandListener(editorDispatcher);
     currentEditor.addAppCommandListener(this);
+    elementCountUpdater.refresh(currentEditor);
     JScrollPane spane = new JScrollPane(currentEditor);
     JPanel editorPanel = new JPanel(new BorderLayout());
     spane.getVerticalScrollBar().setUnitIncrement(10);
@@ -251,33 +255,6 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
   }
 
   /**
-   * RF-001: Cuenta los elementos del diagrama actual por categoria
-   * (Package, Class, Component) y actualiza el label de la barra de estado.
-   */
-  private void updateElementCounts(DiagramEditor editor) {
-    int packageCount = 0;
-    int classCount = 0;
-    int componentCount = 0;
-
-    if (editor != null && editor.getDiagram() != null) {
-      for (DiagramElement element : editor.getDiagram().getChildren()) {
-        if (element instanceof PackageElement) {
-          packageCount++;
-        } else if (element instanceof ClassElement) {
-          classCount++;
-        } else if (element instanceof ComponentElement) {
-          componentCount++;
-        }
-      }
-    }
-
-    int total = packageCount + classCount + componentCount;
-    countLabel.setText(String.format(
-      "Total Items : %02d; Package:%02d, Class:%02d; Component: %02d",
-      total, packageCount, classCount, componentCount));
-  }
-
-  /**
    * Returns the specified resource as a String object.
    * @param property the property name
    * @return the property value
@@ -316,7 +293,6 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
     // spring loading is implemented here
     staticToolbarManager.doClick("SELECT_MODE");
     updateMenuAndToolbars(editor);
-    updateElementCounts(editor);
   }
 
   /**
@@ -324,7 +300,6 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
    */
   public void elementRemoved(DiagramEditor editor) {
     updateMenuAndToolbars(editor);
-    updateElementCounts(editor);
   }
 
   /**
@@ -458,7 +433,6 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
       diagram.setLabelText("Class diagram 1");
       tabbedPane.removeAll();
       createEditor(diagram);
-      updateElementCounts(currentEditor);
     }
   }
 
@@ -566,7 +540,6 @@ implements EditorStateListener, AppCommandListener, SelectionListener {
           tabbedPane.removeAll();
           createEditor((StructureDiagram) umlModel.getDiagrams().get(0));
           updateFrameTitle();
-          updateElementCounts(currentEditor);
         } catch (IOException ex) {
           JOptionPane.showMessageDialog(this, ex.getMessage(),
             getResourceString("error.readfile.title"),
